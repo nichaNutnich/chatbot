@@ -1,6 +1,6 @@
 import pika
 import json
-import schedule
+# import schedule
 from notify import send_message
 from datetime import datetime, timedelta
 from redis import Redis
@@ -30,12 +30,12 @@ def add_job(data):
     # print("test1:",customer_date)
     # datetime_format = "%Y-%m-%d %H:%M"
     # date_obj = datetime.datetime.strptime(customer_date, datetime_format)
-    try:
-        time_id = data["time_id"]
-        time_id_dt = datetime.fromtimestamp(time_id)
-    except KeyError:
-        print("Missing key 'time_id' in the data. Skipping job.")
-        return None
+    # try:
+    #     time_id = data["time_id"]
+    #     time_id_dt = datetime.fromtimestamp(time_id)
+    # except KeyError:
+    #     print("Missing key 'time_id' in the data. Skipping job.")
+    #     return None
     
     try:
         date_obj = datetime.strptime(customer_date, "%Y-%m-%d").date()
@@ -47,31 +47,33 @@ def add_job(data):
     # print("test2:",customer_time)
     # print("test3:",customer_court)
     # print("test4:",customer_name)
+    
     if date_obj == datetime.now().date():
-        if ':' not in customer_time:
+        if customer_time.isdigit() and len(customer_time) <= 2:
             customer_time = customer_time.zfill(2) + ":00"
-        elif len(customer_time.split(':')[0]) == 1:
-            customer_time = customer_time.zfill(5)
+        elif len(customer_time.split(':')) == 2:
+            hours, minutes = customer_time.split(':')
+            customer_time = hours.zfill(2) + ":" + minutes.zfill(2)
+        else:
+            print("Invalid time format")
+            return None
 
-        # หากเป็นวันที่ปัจจุบัน ตรวจสอบเวลาที่ต้องแจ้งเตือน
+        # Calculate the notification time, 1 hour before the booking time
         notification_time_str = f"{customer_date} {customer_time}"
         notification_time = datetime.strptime(notification_time_str, "%Y-%m-%d %H:%M")
-        # notification_time = datetime.datetime.strptime(f"{date_obj} {customer_time}", "%Y-%m-%d %H:%M")
-        # ตรวจสอบเงื่อนไขเวลาก่อนเวลาที่มีการจองอีก 1 ชั่วโมง
-        print(time_id_dt == notification_time - timedelta(hours=1))
-        print(datetime.now())
-        if time_id_dt == notification_time - timedelta(hours=1) > datetime.now():
-            # หากเงื่อนไขเป็นจริง ให้เพิ่มงานลงในตารางงานของ schedule
-            # schedule.once().do(send_message, customer_name, customer_court, customer_time)
-            
-            job_time = notification_time - timedelta(hours=1)
-            job_time = job_time.astimezone(pytz.UTC)  # แปลงเวลาเป็น UTC
-            
-            # เพิ่มงานลงใน scheduler
-            scheduler.enqueue_at(job_time, send_message, customer_name, customer_court, customer_time)
+        notification_time -= timedelta(hours=1)
+        
+        # Convert notification time to UTC
+        notification_time = notification_time.astimezone(pytz.UTC)
+        
+        # Check if it's time to send the notification
+        print(notification_time)
+        # print(datetime.now(pytz.UTC))
+        if notification_time > datetime.now(pytz.UTC):
+            # Add the job to the scheduler
+            scheduler.enqueue_at(notification_time, send_message, customer_name, customer_court, customer_time)
             message = f"คุณ {customer_name} วันนี้มีการจองคอร์ทแบดมินตัน {customer_court} ในช่วงเวลา {customer_time}"
             print(message)
-
             # # แปลง datetime กลับเป็น string
             # date_string = date_obj.strftime("%Y-%m-%d")
             # print("Customer Date as String:", date_string)
